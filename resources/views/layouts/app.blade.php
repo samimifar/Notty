@@ -10,7 +10,6 @@
     body {
         font-family: Shabnam, sans-serif !important;
     }
-    /* Force Bootstrap overlays (tooltips/popovers) to use Shabnam */
     :root { --bs-body-font-family: Shabnam, sans-serif; }
     .tooltip, .tooltip .tooltip-inner,
     .popover, .popover .popover-header, .popover .popover-body {

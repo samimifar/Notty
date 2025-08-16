@@ -16,4 +16,49 @@ class Event extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function generateOccurrences($startDate, $endDate)
+    {
+        $occurrences = [];
+        $current = $this->date_time->copy();
+        $eventEnd = $endDate->copy();
+
+        while ($current <= $eventEnd) {
+            if ($current >= $startDate && $current <= $endDate) {
+                $occurrences[] = [
+                    'start' => $current->copy(),
+                    'end' => $current->copy()->addMinutes($this->duration),
+                ];
+            }
+
+            switch ($this->cycle) {
+                case 'daily':
+                    $current->addDay();
+                    break;
+                case 'weekly':
+                    $current->addWeek();
+                    break;
+                case 'monthly':
+                    $current->addMonth();
+                    break;
+                case 'yearly':
+                    $current->addYear();
+                    break;
+                case 'once':
+                default:
+                    $current = $eventEnd->copy()->addDay(); // break loop
+                    break;
+            }
+        }
+
+        return $occurrences;
+    }
+
+    public function overlaps($otherStart, $otherEnd)
+    {
+        $eventStart = $this->date_time;
+        $eventEnd = $this->date_time->copy()->addMinutes($this->duration);
+
+        return $eventStart < $otherEnd && $eventEnd > $otherStart;
+    }
 }

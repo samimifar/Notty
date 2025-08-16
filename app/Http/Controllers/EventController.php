@@ -9,13 +9,116 @@ use Carbon\Carbon;
 
 class EventController extends Controller
 {
-    public function index()
+    public function json(Request $request)
     {
         $events = Event::where('user_id', Auth::id())
             ->orderBy('date_time', 'asc')
             ->get();
 
         return response()->json($events);
+    }
+
+    public function index()
+    {
+        $uid = Auth::id();
+
+        $events = Event::where('user_id', $uid)
+            ->orderBy('date_time', 'desc')
+            ->get()
+            ->map(function ($ev) {
+                $start = $ev->date_time instanceof Carbon
+                    ? $ev->date_time->copy()
+                    : Carbon::parse($ev->date_time);
+                $end = (clone $start)->addMinutes(max(1, (int) ($ev->duration ?? 0)));
+
+                return [
+                    'id'          => $ev->id,
+                    'title'       => $ev->name,
+                    'description' => $ev->description,
+                    'cycle'       => $ev->cycle,
+                    'start'       => $start->format('Y-m-d H:i'),
+                    'end'         => $end->format('Y-m-d H:i'),
+                ];
+            });
+
+        return view('events.index', ['events' => $events]);
+    }
+
+    public function listJson(Request $request)
+    {
+        return $this->json($request);
+    }
+
+    /**
+     * Check if two time ranges overlap.
+     */
+    private static function rangesOverlap(Carbon $aStart, Carbon $aEnd, Carbon $bStart, Carbon $bEnd): bool
+    {
+        return $aStart->lt($bEnd) && $aEnd->gt($bStart);
+    }
+
+    /**
+     * Find conflicts for a candidate event against user's existing events in [from,to].
+     * Optionally exclude an event id (useful in update).
+     */
+    private function findConflicts(Event $candidate, int $userId, Carbon $from, Carbon $to, ?int $excludeId = null): array
+    {
+        $conflicts = [];
+
+        // Fetch candidate occurrences (uses Event model helper)
+        $candOccs = $candidate->generateOccurrences($from, $to);
+
+        if (empty($candOccs)) {
+            return $conflicts;
+        }
+
+        $events = Event::where('user_id', $userId)
+            ->when($excludeId, fn($q) => $q->where('id', '!=', $excludeId))
+            ->where('date_time', '<=', $to)
+            ->orderBy('date_time', 'asc')
+            ->get();
+
+        foreach ($events as $ev) {
+            $evOccs = $ev->generateOccurrences($from, $to);
+            foreach ($evOccs as $eo) {
+                foreach ($candOccs as $co) {
+                    if (self::rangesOverlap($co['start'], $co['end'], $eo['start'], $eo['end'])) {
+                        $conflicts[] = [
+                            'event_id'   => $ev->id,
+                            'event_name' => $ev->name,
+                            'their'      => [
+                                'start' => $eo['start']->toDateTimeString(),
+                                'end'   => $eo['end']->toDateTimeString(),
+                            ],
+                            'yours'      => [
+                                'start' => $co['start']->toDateTimeString(),
+                                'end'   => $co['end']->toDateTimeString(),
+                            ],
+                        ];
+                    }
+                }
+            }
+        }
+
+        return $conflicts;
+    }
+
+    /**
+     * Convert internal conflict structure to a flat list the UI expects.
+     */
+    private function normalizeConflicts(array $items): array
+    {
+        return array_map(function ($c) {
+            $start = Carbon::parse($c['their']['start']);
+            $end   = Carbon::parse($c['their']['end']);
+            return [
+                'id'       => $c['event_id'],
+                'title'    => $c['event_name'],
+                'start'    => $start->format('Y-m-d H:i'),
+                'end'      => $end->format('Y-m-d H:i'),
+                'duration' => $start->diffInMinutes($end),
+            ];
+        }, $items);
     }
 
     public function store(Request $request)
@@ -25,8 +128,31 @@ class EventController extends Controller
             'description' => 'nullable|string',
             'date_time'   => 'required|date',
             'duration'    => 'required|integer|min:1|max:10080',
-            'cycle'       => 'required|string|in:once,daily,weekly,monthly,yearly'
+            'cycle'       => 'required|string|in:once,daily,weekly,monthly,yearly',
+            'force'       => 'sometimes|boolean',
         ]);
+
+        $uid  = Auth::id();
+        $from = Carbon::now();
+        $to   = (clone $from)->addYear();
+
+        // Build a transient candidate for conflict check
+        $candidate = new Event([
+            'name'        => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'date_time'   => Carbon::parse($validated['date_time']),
+            'duration'    => (int) $validated['duration'],
+            'cycle'       => $validated['cycle'],
+            'user_id'     => $uid,
+        ]);
+
+        $conflicts = $this->findConflicts($candidate, $uid, $from, $to);
+        if (!$request->boolean('force') && !empty($conflicts)) {
+            return response()->json([
+                'conflict'  => true,
+                'conflicts' => $this->normalizeConflicts($conflicts),
+            ], 409);
+        }
 
         $event = Event::create([
             'name'        => $validated['name'],
@@ -34,7 +160,7 @@ class EventController extends Controller
             'date_time'   => $validated['date_time'],
             'duration'    => (int) $validated['duration'],
             'cycle'       => $validated['cycle'],
-            'user_id'     => Auth::id(),
+            'user_id'     => $uid,
         ]);
 
         return response()->json($event, 201);
@@ -59,8 +185,30 @@ class EventController extends Controller
             'description' => 'nullable|string',
             'date_time'   => 'required|date',
             'duration'    => 'required|integer|min:1|max:10080',
-            'cycle'       => 'required|string|in:once,daily,weekly,monthly,yearly'
+            'cycle'       => 'required|string|in:once,daily,weekly,monthly,yearly',
+            'force'       => 'sometimes|boolean',
         ]);
+
+        $uid  = Auth::id();
+        $from = Carbon::now();
+        $to   = (clone $from)->addYear();
+
+        $candidate = new Event([
+            'name'        => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'date_time'   => Carbon::parse($validated['date_time']),
+            'duration'    => (int) $validated['duration'],
+            'cycle'       => $validated['cycle'],
+            'user_id'     => $uid,
+        ]);
+
+        $conflicts = $this->findConflicts($candidate, $uid, $from, $to, $event->id);
+        if (!$request->boolean('force') && !empty($conflicts)) {
+            return response()->json([
+                'conflict'  => true,
+                'conflicts' => $this->normalizeConflicts($conflicts),
+            ], 409);
+        }
 
         $event->update([
             'name'        => $validated['name'],
@@ -71,6 +219,39 @@ class EventController extends Controller
         ]);
 
         return response()->json($event);
+    }
+
+    public function checkConflicts(Request $request)
+    {
+        $validated = $request->validate([
+            'date_time' => 'required|date',
+            'duration'  => 'required|integer|min:1|max:10080',
+            'cycle'     => 'required|string|in:once,daily,weekly,monthly,yearly',
+        ]);
+
+        $uid  = Auth::id();
+        $from = Carbon::now();
+        $to   = (clone $from)->addYear();
+
+        $candidate = new Event([
+            'name'        => $request->input('name', ''),
+            'description' => $request->input('description'),
+            'date_time'   => Carbon::parse($validated['date_time']),
+            'duration'    => (int) $validated['duration'],
+            'cycle'       => $validated['cycle'],
+            'user_id'     => $uid,
+        ]);
+
+        $conflicts = $this->findConflicts($candidate, $uid, $from, $to, $request->input('exclude_id'));
+
+        $normalized = $this->normalizeConflicts($conflicts);
+
+        return response()->json([
+            'conflict'  => !empty($normalized),
+            'conflicts' => $normalized,
+            'count'     => count($normalized),
+            'window'    => [ 'from' => $from->toDateTimeString(), 'to' => $to->toDateTimeString() ],
+        ]);
     }
 
     public function week(Request $request)
