@@ -1,95 +1,165 @@
 <x-app-layout>
     <div class="py-6">
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                <div class="p-6 text-gray-900">
-                    <div class="flex items-center justify-between mb-4">
+            <div class="bg-white shadow-sm rounded-lg p-4 h-[560px] flex flex-col">
+                <div x-data="eventsList()" x-init="init()" class="flex-1 flex flex-col text-gray-900">
+                    <div class="flex items-center justify-between mb-2">
                         <h3 class="text-lg font-semibold">Your Events</h3>
                     </div>
+                    <div class="h-px bg-gray-200 mb-2"></div>
 
-                    <div x-data="eventsList()" x-init="init()" class="overflow-x-auto">
-                        <table id="main-events-table" class="min-w-full border border-gray-200 divide-y divide-gray-200 text-sm">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-4 py-2 text-left font-medium text-gray-600">Title</th>
-                                    <th class="px-4 py-2 text-left font-medium text-gray-600">Description</th>
-                                    <th class="px-4 py-2 text-left font-medium text-gray-600">Cycle</th>
-                                    <th class="px-4 py-2 text-left font-medium text-gray-600">Time</th>
-                                    <th class="px-4 py-2 text-center font-medium text-gray-600">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100">
-                                @forelse($events as $event)
-                                @php
-                                // Normalize array/object access
-                                $get = function($key, $default = null) use ($event) {
+                    <div class="flex-1 overflow-y-auto">
+                        <div class="overflow-x-auto">
+                            <table id="main-events-table" class="min-w-full border border-gray-200 divide-y divide-gray-200 text-sm">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left font-medium text-gray-600">Title</th>
+                                        <th class="px-4 py-2 text-left font-medium text-gray-600">Description</th>
+                                        <th class="px-4 py-2 text-left font-medium text-gray-600">Cycle</th>
+                                        <th class="px-4 py-2 text-left font-medium text-gray-600">Time</th>
+                                        <th class="px-4 py-2 text-center font-medium text-gray-600">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    @forelse($events as $event)
+                                    @php
+                                    // Normalize array/object access
+                                    $get = function($key, $default = null) use ($event) {
                                     if (is_array($event)) return data_get($event, $key, $default);
                                     return data_get($event, $key, $default);
-                                };
+                                    };
 
-                                $evId = $get('id');
-                                $title = $get('title', $get('name', '—'));
-                                $desc = $get('description', '—');
-                                $cycle = ucfirst($get('cycle', 'once'));
-                                $start = $get('start', $get('date_time'));
-                                // Try to build an end from date_time + duration when end is missing
-                                $end = $get('end');
-                                if (!$end && $start && ($dur = $get('duration'))) {
+                                    $evId = $get('id');
+                                    $title = $get('title', $get('name', '—'));
+                                    $desc = $get('description', '—');
+                                    $cycle = ucfirst($get('cycle', 'once'));
+                                    $start = $get('start', $get('date_time'));
+                                    // Try to build an end from date_time + duration when end is missing
+                                    $end = $get('end');
+                                    if (!$end && $start && ($dur = $get('duration'))) {
                                     try { $end = \Carbon\Carbon::parse($start)->copy()->addMinutes((int) $dur)->format('Y-m-d H:i'); } catch (\Throwable $e) { /* ignore */ }
-                                }
-                                // Insert time range string computation
-                                $time = '—';
-                                try {
-                                    if ($start) {
-                                        $s = \Carbon\Carbon::parse($start);
-                                        $e = $end ? \Carbon\Carbon::parse($end)
-                                            : (($dur = $get('duration')) ? $s->copy()->addMinutes((int)$dur) : null);
-                                        if ($e) {
-                                            $time = $s->format('H:i') . ' – ' . $e->format('H:i');
-                                        }
                                     }
-                                } catch (\Throwable $e) { /* ignore formatting errors */ }
-                                // Compute UTC ISO strings for timezone-safe JS
-                                $startIso = null; $endIso = null;
-                                try {
+                                    // Insert time range string computation
+                                    $time = '—';
+                                    try {
                                     if ($start) {
-                                        $sObj = \Carbon\Carbon::parse($start)->utc();
-                                        $startIso = $sObj->toIso8601String();
-                                        if ($end) {
-                                            $eObj = \Carbon\Carbon::parse($end)->utc();
-                                            $endIso = $eObj->toIso8601String();
-                                        } elseif ($dur = $get('duration')) {
-                                            $eObj = $sObj->copy()->addMinutes((int)$dur);
-                                            $endIso = $eObj->toIso8601String();
-                                        }
+                                    $s = \Carbon\Carbon::parse($start);
+                                    $e = $end ? \Carbon\Carbon::parse($end)
+                                    : (($dur = $get('duration')) ? $s->copy()->addMinutes((int)$dur) : null);
+                                    if ($e) {
+                                    $time = $s->format('H:i') . ' – ' . $e->format('H:i');
                                     }
-                                } catch (\Throwable $e) { /* ignore */ }
-                                @endphp
-                                <tr id="ev-row-{{ (int) $evId }}">
-                                    <td class="px-4 py-2"><span class="js-title">{{ $title }}</span></td>
-                                    <td class="px-4 py-2"><span class="js-desc">{{ $desc }}</span></td>
-                                    <td class="px-4 py-2"><span class="js-cycle">{{ $cycle }}</span></td>
-                                    <td class="px-4 py-2">
-                                        <span class="js-time">{{ $time }}</span>
-                                    </td>
-                                    <td class="px-4 py-2 text-center">
-                                        @if($evId)
-                                        <div class="inline-flex gap-2">
-                                            <button type="button" @click="openEdit({{ (int) $evId }})" class="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-xs">Edit</button>
-                                            <button type="button" @click="askDelete({ id: {{ (int) $evId }}, title: @js($title) })" class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs">Delete</button>
+                                    }
+                                    } catch (\Throwable $e) { /* ignore formatting errors */ }
+                                    // Compute UTC ISO strings for timezone-safe JS
+                                    $startIso = null; $endIso = null;
+                                    try {
+                                    if ($start) {
+                                    $sObj = \Carbon\Carbon::parse($start)->utc();
+                                    $startIso = $sObj->toIso8601String();
+                                    if ($end) {
+                                    $eObj = \Carbon\Carbon::parse($end)->utc();
+                                    $endIso = $eObj->toIso8601String();
+                                    } elseif ($dur = $get('duration')) {
+                                    $eObj = $sObj->copy()->addMinutes((int)$dur);
+                                    $endIso = $eObj->toIso8601String();
+                                    }
+                                    }
+                                    } catch (\Throwable $e) { /* ignore */ }
+                                    // Determine if current user is the owner/admin of this event (robust across shapes)
+                                    $currentUserId = (int) auth()->id();
+                                    // Try several common fields (flat and nested) that might carry the owner's id
+                                    $ownerId = $get('user_id')
+                                        ?? $get('owner_id')
+                                        ?? $get('creator_id')
+                                        ?? $get('created_by')
+                                        ?? $get('admin_id')
+                                        ?? $get('group.admin_id')
+                                        ?? $get('group_owner_id');
+
+                                    $ownerId = is_numeric($ownerId) ? (int) $ownerId : null;
+
+                                    // Some payloads send explicit booleans
+                                    $explicitOwnerFlags = (bool) $get('is_owner') || (bool) $get('owner') || (bool) $get('is_admin') || (bool) $get('owned');
+
+                                    $isOwner = $explicitOwnerFlags || ($ownerId !== null && $ownerId === $currentUserId);
+                                    @endphp
+                                    <tr id="ev-row-{{ (int) $evId }}"
+                                        data-owner="{{ $isOwner ? 1 : 0 }}"
+                                        data-owner-id="{{ $ownerId !== null ? (int) $ownerId : '' }}"
+                                        data-user-id="{{ (int) auth()->id() }}">
+                                        <td class="px-4 py-2"><span class="js-title">{{ $title }}</span></td>
+                                        <td class="px-4 py-2"><span class="js-desc">{{ $desc }}</span></td>
+                                        <td class="px-4 py-2"><span class="js-cycle">{{ $cycle }}</span></td>
+                                        <td class="px-4 py-2">
+                                            <span class="js-time">{{ $time }}</span>
+                                        </td>
+                                        <td class="px-4 py-2 text-center">
+                                            @if($evId && $isOwner === true)
+                                            <div class="inline-flex gap-2">
+                                                <button type="button" @click="openEdit({{ (int) $evId }})" class="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-xs">Edit</button>
+                                                <button type="button" @click="askDelete({ id: {{ (int) $evId }}, title: @js($title) })" class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs">Delete</button>
+                                                <button type="button" @click="openInvite({{ (int) $evId }})" class="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 text-xs">
+                                                    Invite
+                                                </button>
+                                            </div>
+                                            @else
+                                            <span class="text-gray-400 text-xs">—</span>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                    @empty
+                                    <tr>
+                                        <td colspan="5" class="px-4 py-8 text-center text-gray-500">No events to show.</td>
+                                    </tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Invite Contacts Modal (Tailwind/Alpine) -->
+                        <div x-cloak x-show="showInvite" class="fixed inset-0 z-50 flex items-center justify-center">
+                            <div class="absolute inset-0 bg-black/40" @click="closeInvite()"></div>
+                            <div class="relative bg-white rounded-lg shadow-lg w-full max-w-lg p-5">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h3 class="text-base font-semibold">Invite Contacts</h3>
+                                    <button class="text-gray-500" @click="closeInvite()">✕</button>
+                                </div>
+
+                                <div class="space-y-2 max-h-80 overflow-y-auto" id="inviteList">
+                                    <template x-if="!invitees.length">
+                                        <div class="text-sm text-gray-500">No contacts found.</div>
+                                    </template>
+                                    <template x-for="c in invitees" :key="'inv-'+c.id">
+                                        <div class="flex items-center justify-between gap-3 p-2 border rounded">
+                                            <div class="flex items-center gap-3">
+                                                <!-- Avatar with first letter -->
+                                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-semibold" x-text="(c.name || '?').charAt(0).toUpperCase()"></div>
+                                                <div class="text-sm" x-text="c.name"></div>
+                                            </div>
+                                            <div>
+                                                <!-- One unified button; style depends on status -->
+                                                <button
+                                                    class="px-3 py-1 rounded text-xs"
+                                                    :class="{
+                                                        'bg-indigo-600 text-white hover:bg-indigo-700': c.status === 'not',
+                                                        'bg-gray-400 text-white cursor-not-allowed': c.status === 'pending',
+                                                        'bg-green-600 text-white cursor-not-allowed': c.status === 'joined'
+                                                    }"
+                                                    :disabled="c.status !== 'not'"
+                                                    @click="sendInvite(c)"
+                                                    x-text="c.status === 'joined' ? 'Joined' : (c.status === 'pending' ? 'Pending' : 'Invite')"
+                                                ></button>
+                                            </div>
                                         </div>
-                                        @else
-                                        <span class="text-gray-400 text-xs">—</span>
-                                        @endif
-                                    </td>
-                                </tr>
-                                @empty
-                                <tr>
-                                    <td colspan="5" class="px-4 py-8 text-center text-gray-500">No events to show.</td>
-                                </tr>
-                                @endforelse
-                            </tbody>
-                        </table>
+                                    </template>
+                                </div>
+
+                                <div class="flex justify-end gap-2 mt-4">
+                                    <button class="px-3 py-1 border rounded text-sm" @click="closeInvite()">Close</button>
+                                </div>
+                            </div>
+                        </div>
 
                         <!-- Edit Event Modal -->
                         <div x-cloak x-show="showEdit" class="fixed inset-0 z-50 flex items-center justify-center">
@@ -97,35 +167,53 @@
                             <div class="relative bg-white rounded-lg shadow-lg w-full max-w-lg p-5">
                                 <div class="flex items-center justify-between mb-3">
                                     <h3 class="text-base font-semibold">Edit event</h3>
-                                    <button class="text-gray-500" @click="showEdit=false">✕</button>
+                                    <button class="text-gray-500" @click="showEdit=false" type="button">✕</button>
                                 </div>
 
-                                <div class="space-y-3">
+                                <!-- Wrap fields in a real form so HTML5 validation works -->
+                                <form @submit.prevent="save()" class="space-y-3" novalidate>
                                     <div>
                                         <label class="block text-xs text-gray-600 mb-1">Title</label>
-                                        <input type="text" class="w-full border rounded p-2 text-sm" x-model="form.name">
+                                        <input type="text"
+                                               class="w-full border rounded p-2 text-sm"
+                                               x-model="form.name"
+                                               name="name"
+                                               required>
                                         <template x-if="errors.name">
                                             <div class="text-xs text-red-600" x-text="errors.name[0]"></div>
                                         </template>
                                     </div>
+
                                     <div>
                                         <label class="block text-xs text-gray-600 mb-1">Description</label>
-                                        <textarea class="w-full border rounded p-2 text-sm" rows="3" x-model="form.description"></textarea>
+                                        <textarea class="w-full border rounded p-2 text-sm"
+                                                  rows="3"
+                                                  x-model="form.description"
+                                                  name="description"></textarea>
                                         <template x-if="errors.description">
                                             <div class="text-xs text-red-600" x-text="errors.description[0]"></div>
                                         </template>
                                     </div>
+
                                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <div>
                                             <label class="block text-xs text-gray-600 mb-1">Duration (min)</label>
-                                            <input type="number" min="1" class="w-full border rounded p-2 text-sm" x-model.number="form.duration">
+                                            <input type="number"
+                                                   min="1"
+                                                   class="w-full border rounded p-2 text-sm"
+                                                   x-model.number="form.duration"
+                                                   name="duration"
+                                                   required>
                                             <template x-if="errors.duration">
                                                 <div class="text-xs text-red-600" x-text="errors.duration[0]"></div>
                                             </template>
                                         </div>
                                         <div>
                                             <label class="block text-xs text-gray-600 mb-1">Cycle</label>
-                                            <select class="w-full border rounded p-2 text-sm" x-model="form.cycle">
+                                            <select class="w-full border rounded p-2 text-sm"
+                                                    x-model="form.cycle"
+                                                    name="cycle"
+                                                    required>
                                                 <option value="once">once</option>
                                                 <option value="daily">daily</option>
                                                 <option value="weekly">weekly</option>
@@ -137,27 +225,41 @@
                                             </template>
                                         </div>
                                     </div>
-                                    <!-- Dynamic Cycle Fields, vertical layout -->
+
+                                    <!-- Dynamic Cycle Fields -->
                                     <template x-if="form.cycle === 'once'">
                                         <div>
                                             <label class="block text-xs text-gray-600 mb-1">Start (date &amp; time)</label>
-                                            <input type="datetime-local" class="w-full border rounded p-2 text-sm" x-model="form.date_time">
+                                            <input type="datetime-local"
+                                                   class="w-full border rounded p-2 text-sm"
+                                                   x-model="form.date_time"
+                                                   name="date_time"
+                                                   :required="form.cycle==='once'">
                                             <template x-if="errors.date_time">
                                                 <div class="text-xs text-red-600" x-text="errors.date_time[0]"></div>
                                             </template>
                                         </div>
                                     </template>
+
                                     <template x-if="form.cycle === 'daily'">
                                         <div>
                                             <label class="block text-xs text-gray-600 mb-1">Time</label>
-                                            <input type="time" class="w-full border rounded p-2 text-sm" x-model="timeStr">
+                                            <input type="time"
+                                                   class="w-full border rounded p-2 text-sm"
+                                                   x-model="timeStr"
+                                                   name="time_daily"
+                                                   :required="form.cycle==='daily'">
                                         </div>
                                     </template>
+
                                     <template x-if="form.cycle === 'weekly'">
                                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             <div>
                                                 <label class="block text-xs text-gray-600 mb-1">Weekday</label>
-                                                <select class="w-full border rounded p-2 text-sm" x-model="weekday">
+                                                <select class="w-full border rounded p-2 text-sm"
+                                                        x-model="weekday"
+                                                        name="weekday"
+                                                        :required="form.cycle==='weekly'">
                                                     <option value="6">Saturday</option>
                                                     <option value="0">Sunday</option>
                                                     <option value="1">Monday</option>
@@ -169,15 +271,23 @@
                                             </div>
                                             <div>
                                                 <label class="block text-xs text-gray-600 mb-1">Time</label>
-                                                <input type="time" class="w-full border rounded p-2 text-sm" x-model="timeStr">
+                                                <input type="time"
+                                                       class="w-full border rounded p-2 text-sm"
+                                                       x-model="timeStr"
+                                                       name="time_weekly"
+                                                       :required="form.cycle==='weekly'">
                                             </div>
                                         </div>
                                     </template>
+
                                     <template x-if="form.cycle === 'monthly'">
                                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                             <div>
                                                 <label class="block text-xs text-gray-600 mb-1">Month</label>
-                                                <select class="w-full border rounded p-2 text-sm" x-model="month">
+                                                <select class="w-full border rounded p-2 text-sm"
+                                                        x-model="month"
+                                                        name="month_monthly"
+                                                        :required="form.cycle==='monthly'">
                                                     <option value="1">January</option>
                                                     <option value="2">February</option>
                                                     <option value="3">March</option>
@@ -194,7 +304,10 @@
                                             </div>
                                             <div>
                                                 <label class="block text-xs text-gray-600 mb-1">Day</label>
-                                                <select class="w-full border rounded p-2 text-sm" x-model="dom">
+                                                <select class="w-full border rounded p-2 text-sm"
+                                                        x-model="dom"
+                                                        name="day_monthly"
+                                                        :required="form.cycle==='monthly'">
                                                     <template x-for="d in 31" :key="'m-d-'+d">
                                                         <option :value="d" x-text="d"></option>
                                                     </template>
@@ -202,15 +315,23 @@
                                             </div>
                                             <div>
                                                 <label class="block text-xs text-gray-600 mb-1">Time</label>
-                                                <input type="time" class="w-full border rounded p-2 text-sm" x-model="timeStr">
+                                                <input type="time"
+                                                       class="w-full border rounded p-2 text-sm"
+                                                       x-model="timeStr"
+                                                       name="time_monthly"
+                                                       :required="form.cycle==='monthly'">
                                             </div>
                                         </div>
                                     </template>
+
                                     <template x-if="form.cycle === 'yearly'">
                                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                             <div>
                                                 <label class="block text-xs text-gray-600 mb-1">Month</label>
-                                                <select class="w-full border rounded p-2 text-sm" x-model="month">
+                                                <select class="w-full border rounded p-2 text-sm"
+                                                        x-model="month"
+                                                        name="month_yearly"
+                                                        :required="form.cycle==='yearly'">
                                                     <option value="1">January</option>
                                                     <option value="2">February</option>
                                                     <option value="3">March</option>
@@ -227,7 +348,10 @@
                                             </div>
                                             <div>
                                                 <label class="block text-xs text-gray-600 mb-1">Day</label>
-                                                <select class="w-full border rounded p-2 text-sm" x-model="dom">
+                                                <select class="w-full border rounded p-2 text-sm"
+                                                        x-model="dom"
+                                                        name="day_yearly"
+                                                        :required="form.cycle==='yearly'">
                                                     <template x-for="d in 31" :key="'y-d-'+d">
                                                         <option :value="d" x-text="d"></option>
                                                     </template>
@@ -235,18 +359,21 @@
                                             </div>
                                             <div>
                                                 <label class="block text-xs text-gray-600 mb-1">Time</label>
-                                                <input type="time" class="w-full border rounded p-2 text-sm" x-model="timeStr">
+                                                <input type="time"
+                                                       class="w-full border rounded p-2 text-sm"
+                                                       x-model="timeStr"
+                                                       name="time_yearly"
+                                                       :required="form.cycle==='yearly'">
                                             </div>
                                         </div>
                                     </template>
 
                                     <div class="flex justify-end gap-2 mt-4">
-                                        <button class="px-3 py-1 border rounded text-sm" @click="showEdit=false">Cancel</button>
-                                        <button class="px-3 py-1 border rounded bg-indigo-600 text-white text-sm" @click="save()" :disabled="loading">Save</button>
+                                        <button type="button" class="px-3 py-1 border rounded text-sm" @click="showEdit=false">Cancel</button>
+                                        <button type="submit" class="px-3 py-1 border rounded bg-indigo-600 text-white text-sm" :disabled="loading">Save</button>
                                     </div>
-                                </div>
+                                </form>
                             </div>
-
                         </div>
 
                         <!-- Conflict Modal (Tailwind/Alpine) -->
@@ -326,6 +453,9 @@
                     showEdit: false,
                     showConflict: false,
                     showConfirm: false,
+                    showInvite: false,
+                    inviteEventId: null,
+                    invitees: [],
                     loading: false,
                     errors: {},
                     confirmModal: null,
@@ -347,6 +477,58 @@
                     dom: 1, // day of month
                     month: 1, // 1..12
                     timeStr: '09:00',
+                    async openInvite(eventId) {
+                        this.inviteEventId = eventId;
+                        this.showInvite = true;
+                        await this.loadInvitees();
+                    },
+                    closeInvite() {
+                        this.showInvite = false;
+                        this.inviteEventId = null;
+                        this.invitees = [];
+                    },
+                    async loadInvitees() {
+                        if (!this.inviteEventId) return;
+                        const url = "{{ route('events.eligible', ['event' => ':id']) }}".replace(':id', String(this.inviteEventId));
+                        try {
+                            const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                            this.invitees = res.ok ? (await res.json()) : [];
+                        } catch (e) {
+                            console.error('invitees load failed', e);
+                            this.invitees = [];
+                        }
+                    },
+                    async sendInvite(contact) {
+                        if (!this.inviteEventId || !contact || contact.status !== 'not') return;
+                        const url = "{{ route('events.invite', ['event' => ':id']) }}".replace(':id', String(this.inviteEventId));
+                        try {
+                            const res = await fetch(url, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                    'X-CSRF-TOKEN': this.getCsrf(),
+                                },
+                                body: JSON.stringify({ contact_id: contact.id })
+                            });
+
+                            // Update button state based on response
+                            if (res.ok) {
+                                contact.status = 'pending';
+                            } else if (res.status === 422) {
+                                // Probably already invited or validation error → mark as pending
+                                contact.status = 'pending';
+                            } else if (res.status === 409) {
+                                // Already a member → mark as joined
+                                contact.status = 'joined';
+                            } else {
+                                console.error('invite failed', await res.text());
+                            }
+                        } catch (e) {
+                            console.error('invite error', e);
+                        }
+                    },
                     pad(n) {
                         return String(n).padStart(2, '0');
                     },
@@ -452,7 +634,7 @@
                                 this.month = mDate ? parseInt(mo, 10) : 1;
                                 // Weekday: compute from local date-only to avoid TZ hour shift
                                 if (mDate) {
-                                    const wd = new Date(parseInt(y,10), parseInt(mo,10)-1, parseInt(d,10)).getDay();
+                                    const wd = new Date(parseInt(y, 10), parseInt(mo, 10) - 1, parseInt(d, 10)).getDay();
                                     this.weekday = wd; // 0=Sun..6=Sat
                                 }
                             } else {
@@ -466,8 +648,8 @@
                     },
                     async checkConflict(payload) {
                         try {
-                            const url = @js(url('/events/check-conflicts'));
-                            const res = await fetch(url, {
+
+                            const res = await fetch('/events/check-conflicts', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
@@ -513,7 +695,7 @@
                         const m = Math.max(0, Math.floor(mins));
                         const h = Math.floor(m / 60);
                         const r = m % 60;
-                        return String(h).padStart(2,'0') + ':' + String(r).padStart(2,'0');
+                        return String(h).padStart(2, '0') + ':' + String(r).padStart(2, '0');
                     },
                     formatHM(val) {
                         if (val == null) return null;
@@ -523,17 +705,23 @@
                         if (m) {
                             const h = Math.min(23, Math.max(0, parseInt(m[1], 10)));
                             const mi = Math.min(59, Math.max(0, parseInt(m[2], 10)));
-                            return String(h).padStart(2,'0') + ':' + String(mi).padStart(2,'0');
+                            return String(h).padStart(2, '0') + ':' + String(mi).padStart(2, '0');
                         }
                         const d = new Date(s);
-                        if (!isNaN(d)) return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+                        if (!isNaN(d)) return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
                         return null;
                     },
                     normalizeConflictSide(side) {
-                        if (!side) return { start: null, end: null };
+                        if (!side) return {
+                            start: null,
+                            end: null
+                        };
                         const startRaw = side.start ?? side.startMin ?? side.start_min ?? side.start_minutes;
-                        const endRaw   = side.end   ?? side.endMin   ?? side.end_min   ?? side.end_minutes;
-                        return { start: this.formatHM(startRaw), end: this.formatHM(endRaw) };
+                        const endRaw = side.end ?? side.endMin ?? side.end_min ?? side.end_minutes;
+                        return {
+                            start: this.formatHM(startRaw),
+                            end: this.formatHM(endRaw)
+                        };
                     },
                     formatConflictTitle(c) {
                         if (!c) return 'Event';
@@ -559,30 +747,30 @@
                         };
                         const addMin = (hmStr, minutes) => {
                             if (!hmStr || minutes == null) return '';
-                            const [h, m] = hmStr.split(':').map(x => parseInt(x,10)||0);
-                            let t = h*60 + m + (parseInt(minutes,10)||0);
+                            const [h, m] = hmStr.split(':').map(x => parseInt(x, 10) || 0);
+                            let t = h * 60 + m + (parseInt(minutes, 10) || 0);
                             t = ((t % 1440) + 1440) % 1440;
-                            const hh = String(Math.floor(t/60)).padStart(2,'0');
-                            const mm = String(t%60).padStart(2,'0');
+                            const hh = String(Math.floor(t / 60)).padStart(2, '0');
+                            const mm = String(t % 60).padStart(2, '0');
                             return `${hh}:${mm}`;
                         };
 
                         // 1) Shape: {their:{start,end}, yours:{start,end}}
                         if ((c.their && (c.their.start || c.their.end)) || (c.yours && (c.yours.start || c.yours.end))) {
                             const tStart = hm(c.their && (c.their.start_time || c.their.start));
-                            let   tEnd   = hm(c.their && (c.their.end_time   || c.their.end));
+                            let tEnd = hm(c.their && (c.their.end_time || c.their.end));
                             if (!tEnd && tStart && c.their && c.their.duration != null) {
                                 tEnd = addMin(tStart, c.their.duration);
                             }
 
                             const yStart = hm(c.yours && (c.yours.start_time || c.yours.start));
-                            let   yEnd   = hm(c.yours && (c.yours.end_time   || c.yours.end));
+                            let yEnd = hm(c.yours && (c.yours.end_time || c.yours.end));
                             if (!yEnd && yStart && c.yours && c.yours.duration != null) {
                                 yEnd = addMin(yStart, c.yours.duration);
                             }
 
                             const theirs = (tStart && tEnd) ? `${tStart} – ${tEnd}` : (tStart || '');
-                            const yours  = (yStart && yEnd) ? `${yStart} – ${yEnd}` : (yStart || '');
+                            const yours = (yStart && yEnd) ? `${yStart} – ${yEnd}` : (yStart || '');
 
                             if (theirs || yours) {
                                 // Show on two lines similar to dashboard style
@@ -593,7 +781,7 @@
                         // 2) Shape: {start,end,duration} possibly under c.event
                         const get = (k) => (c[k] ?? (c.event ? c.event[k] : undefined));
                         let start = get('start_time') || get('start') || get('date_time');
-                        let end   = get('end_time')   || get('end');
+                        let end = get('end_time') || get('end');
                         const dur = get('duration');
 
                         const startHM = hm(start);
@@ -671,7 +859,9 @@
                                     return;
                                 }
                                 let data = {};
-                                try { data = await res.json(); } catch (_) {}
+                                try {
+                                    data = await res.json();
+                                } catch (_) {}
                                 this._pendingUpdate = payload;
                                 this.openConflict((data && (data.conflicts || data.collisions)) ? (data.conflicts || data.collisions) : []);
                                 return;
@@ -681,7 +871,9 @@
 
                             // Refresh just this row with fresh data
                             const freshRes = await fetch(`/events/${this.form.id}`, {
-                                headers: { 'Accept': 'application/json' }
+                                headers: {
+                                    'Accept': 'application/json'
+                                }
                             });
                             const fresh = await freshRes.json();
                             this.patchRow(fresh);
@@ -697,7 +889,9 @@
                     },
                     proceedAnyway() {
                         if (!this._pendingUpdate) return;
-                        const p = Object.assign({}, this._pendingUpdate, { force: 1 });
+                        const p = Object.assign({}, this._pendingUpdate, {
+                            force: 1
+                        });
                         this.performUpdate(p);
                     },
                     askDelete(payload) {
@@ -718,9 +912,8 @@
                     destroy(id) {
                         const csrf = this.getCsrf();
 
-                        // Build URL from named route so prefixes/locales work
-                        const baseUrl = @js(route('events.delete', ['event' => '__ID__']));
-                        const url = baseUrl.replace('__ID__', String(id));
+                        const baseUrl = "{{ route('events.delete', ['event' => ':id']) }}";
+                        const url = baseUrl.replace(':id', String(id));
 
                         const headers = {
                             'Accept': 'application/json',
@@ -780,7 +973,7 @@
                             const desc = ev.description || '';
                             const cycle = (ev.cycle || 'once');
                             // compute time string WITHOUT Date timezone conversions
-                            const pad2 = n => String(n).padStart(2,'0');
+                            const pad2 = n => String(n).padStart(2, '0');
                             const extractHM = (ts) => {
                                 if (!ts) return '';
                                 const m = String(ts).match(/(?:T|\s)(\d{2}):(\d{2})/);
@@ -788,10 +981,11 @@
                             };
                             const addMinutesHM = (hm, minutes) => {
                                 if (!hm) return '';
-                                let [h, m] = hm.split(':').map(x=>parseInt(x,10)||0);
-                                let total = h*60 + m + (parseInt(minutes,10)||0);
+                                let [h, m] = hm.split(':').map(x => parseInt(x, 10) || 0);
+                                let total = h * 60 + m + (parseInt(minutes, 10) || 0);
                                 total = ((total % 1440) + 1440) % 1440;
-                                const hh = Math.floor(total/60), mm = total % 60;
+                                const hh = Math.floor(total / 60),
+                                    mm = total % 60;
                                 return `${pad2(hh)}:${pad2(mm)}`;
                             };
                             const startHM = extractHM(ev.date_time || ev.start || '');
@@ -818,23 +1012,23 @@
                         const m = document.querySelector('meta[name="csrf-token"]');
                         return m ? m.getAttribute('content') : '';
                     },
-                    formatHM(d){
-                        if(!d) return '';
-                        const pad = n=>String(n).padStart(2,'0');
+                    formatHM(d) {
+                        if (!d) return '';
+                        const pad = n => String(n).padStart(2, '0');
                         return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
                     },
-                    renderLocalTimeCell(el){
-                        if(!el) return;
+                    renderLocalTimeCell(el) {
+                        if (!el) return;
                         const s = el.getAttribute('data-start');
                         const e = el.getAttribute('data-end');
-                        if(!s || !e) return; // leave server text
+                        if (!s || !e) return; // leave server text
                         const sd = new Date(s);
                         const ed = new Date(e);
-                        if(isNaN(sd) || isNaN(ed)) return;
+                        if (isNaN(sd) || isNaN(ed)) return;
                         el.textContent = `${this.formatHM(sd)} – ${this.formatHM(ed)}`;
                     },
-                    convertExistingRows(){
-                        document.querySelectorAll('#main-events-table .js-time').forEach(el=>this.renderLocalTimeCell(el));
+                    convertExistingRows() {
+                        document.querySelectorAll('#main-events-table .js-time').forEach(el => this.renderLocalTimeCell(el));
                     },
                     init() {
                         // no-op (show times exactly as stored)

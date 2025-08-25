@@ -6,12 +6,19 @@ use Illuminate\Http\Request;
 use App\Models\Event;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
+use App\Models\Group;
+use App\Models\User;
+use App\Models\Contact;
+use App\Models\GroupMember;
+use App\Models\GroupInvite;
 
 class EventController extends Controller
 {
     public function json(Request $request)
     {
-        $events = Event::where('user_id', Auth::id())
+        $uid = Auth::id();
+        $ids = $this->accessibleEventIds($uid);
+        $events = Event::whereIn('id', $ids)
             ->orderBy('date_time', 'asc')
             ->get();
 
@@ -21,8 +28,8 @@ class EventController extends Controller
     public function index()
     {
         $uid = Auth::id();
-
-        $events = Event::where('user_id', $uid)
+        $ids = $this->accessibleEventIds($uid);
+        $events = Event::whereIn('id', $ids)
             ->orderBy('date_time', 'desc')
             ->get()
             ->map(function ($ev) {
@@ -38,6 +45,7 @@ class EventController extends Controller
                     'cycle'       => $ev->cycle,
                     'start'       => $start->format('Y-m-d H:i'),
                     'end'         => $end->format('Y-m-d H:i'),
+                    'is_owner'    => (int)$ev->user_id === (int)Auth::id(),
                 ];
             });
 
@@ -49,23 +57,15 @@ class EventController extends Controller
         return $this->json($request);
     }
 
-    /**
-     * Check if two time ranges overlap.
-     */
     private static function rangesOverlap(Carbon $aStart, Carbon $aEnd, Carbon $bStart, Carbon $bEnd): bool
     {
         return $aStart->lt($bEnd) && $aEnd->gt($bStart);
     }
 
-    /**
-     * Find conflicts for a candidate event against user's existing events in [from,to].
-     * Optionally exclude an event id (useful in update).
-     */
     private function findConflicts(Event $candidate, int $userId, Carbon $from, Carbon $to, ?int $excludeId = null): array
     {
         $conflicts = [];
 
-        // Fetch candidate occurrences (uses Event model helper)
         $candOccs = $candidate->generateOccurrences($from, $to);
 
         if (empty($candOccs)) {
@@ -103,9 +103,6 @@ class EventController extends Controller
         return $conflicts;
     }
 
-    /**
-     * Convert internal conflict structure to a flat list the UI expects.
-     */
     private function normalizeConflicts(array $items): array
     {
         return array_map(function ($c) {
@@ -119,6 +116,22 @@ class EventController extends Controller
                 'duration' => $start->diffInMinutes($end),
             ];
         }, $items);
+    }
+
+    private function accessibleEventIds(int $uid): array
+    {
+        // User's own events
+        $ownIds = Event::where('user_id', $uid)->pluck('id')->toArray();
+
+        // Events coming from groups where the user is a member
+        $groupIds = GroupMember::where('user_id', $uid)->pluck('group_id');
+        $groupEventIds = [];
+        if ($groupIds->isNotEmpty()) {
+            $groupEventIds = Group::whereIn('id', $groupIds)->pluck('event_id')->toArray();
+        }
+
+        // Merge & unique
+        return array_values(array_unique(array_merge($ownIds, $groupEventIds)));
     }
 
     public function store(Request $request)
@@ -136,7 +149,6 @@ class EventController extends Controller
         $from = Carbon::now();
         $to   = (clone $from)->addYear();
 
-        // Build a transient candidate for conflict check
         $candidate = new Event([
             'name'        => $validated['name'],
             'description' => $validated['description'] ?? null,
@@ -154,16 +166,35 @@ class EventController extends Controller
             ], 409);
         }
 
-        $event = Event::create([
-            'name'        => $validated['name'],
-            'description' => $validated['description'] ?? null,
-            'date_time'   => $validated['date_time'],
-            'duration'    => (int) $validated['duration'],
-            'cycle'       => $validated['cycle'],
-            'user_id'     => $uid,
-        ]);
+        try {
+            // 1) Create event
+            $event = Event::create([
+                'name'        => $validated['name'],
+                'description' => $validated['description'] ?? null,
+                'date_time'   => $validated['date_time'],
+                'duration'    => (int) $validated['duration'],
+                'cycle'       => $validated['cycle'],
+                'user_id'     => $uid,
+            ]);
 
-        return response()->json($event, 201);
+            // Create the group tied to this event, per your schema
+            $group = Group::create([
+                'admin_id'    => $uid,
+                'event_id'    => $event->id,
+                'tag'         => $event->name,
+                'description' => $event->description,
+            ]);
+
+            // 3) Auto-join creator as member (if model/table exists)
+            if (class_exists(GroupMember::class)) {
+                $gm = new GroupMember();
+                $gm->group_id = $group->id;
+                $gm->user_id = $uid;
+                $gm->save();
+            }
+
+            return response()->json($event, 201);
+        } catch (\Throwable $e) {}
     }
 
     public function show(Event $event)
@@ -260,8 +291,8 @@ class EventController extends Controller
         $end   = (clone $start)->addDays(6)->endOfDay();
         $uid   = Auth::id();
 
-        // Fetch relevant events (own events for now)
-        $events = Event::where('user_id', $uid)
+        $ids = $this->accessibleEventIds($uid);
+        $events = Event::whereIn('id', $ids)
             ->where(function($q) use ($start, $end) {
                 $q->where(function($qq) use ($start, $end){
                     $qq->where('cycle', 'once')->whereBetween('date_time', [$start, $end]);
@@ -273,7 +304,6 @@ class EventController extends Controller
             ->orderBy('date_time', 'asc')
             ->get();
 
-        // Prepare days bucket
         $days = [];
         for ($i=0; $i<7; $i++) {
             $d = (clone $start)->addDays($i);
@@ -283,7 +313,7 @@ class EventController extends Controller
         foreach ($events as $ev) {
             $base = Carbon::parse($ev->date_time);
             $baseStartDay = $base->copy()->startOfDay();
-            $duration = max(1, (int)($ev->duration ?? 60)); // minutes
+            $duration = max(1, (int)($ev->duration ?? 60)); 
 
             switch ($ev->cycle) {
                 case 'once':
@@ -295,7 +325,6 @@ class EventController extends Controller
                 case 'daily':
                     for ($i=0; $i<7; $i++) {
                         $d = (clone $start)->addDays($i);
-                        // daily from the day it starts
                         if ($d->greaterThanOrEqualTo($baseStartDay)) {
                             self::pushOccurrence($days[$d->toDateString()]['events'], $ev, $d->copy()->setTime($base->hour, $base->minute), $duration);
                         }
@@ -328,7 +357,6 @@ class EventController extends Controller
             }
         }
 
-        // Sort events inside each day by time
         foreach ($days as &$bucket) {
             usort($bucket['events'], function($a,$b){ return strcmp($a['start'], $b['start']); });
         }
@@ -358,8 +386,111 @@ class EventController extends Controller
         if ($event->user_id !== Auth::id()) {
             abort(403);
         }
+
+        try {
+            $group = Group::where('event_id', $event->id)->first();
+            if ($group) {
+                if (class_exists(GroupInvite::class)) {
+                    GroupInvite::where('group_id', $group->id)->delete();
+                }
+                if (class_exists(GroupMember::class)) {
+                    GroupMember::where('group_id', $group->id)->delete();
+                }
+                $group->delete();
+            }
+        } catch (\Throwable $e) {}
+
         $event->delete();
 
         return response()->json(null, 204);
+    }
+    public function eligibleInvitees(Event $event)
+    {
+        $group = Group::where('event_id', $event->id)->first();
+
+        $contacts = Contact::where('user_id', Auth::id())->get();
+
+        $invitedContactIds = GroupInvite::where('group_id', $group->id)->pluck('receiver_id')->toArray();
+        $joinedContactIds = GroupMember::where('group_id', $group->id)->pluck('user_id')->toArray();
+
+        return $contacts->map(function ($c) use ($invitedContactIds, $joinedContactIds) {
+            $status = 'not';
+
+            if (in_array($c->id, $joinedContactIds)) {
+                $status = 'joined';
+            } elseif (in_array($c->id, $invitedContactIds)) {
+                $status = 'pending';
+            }
+
+            return [
+                'id' => $c->id,
+                'name' => $c->name,
+                'status' => $status,
+            ];
+        });
+    }
+
+    public function invite(Event $event, Request $request)
+    {
+        $data = $request->validate([
+            'contact_id' => 'required|exists:contacts,id',
+        ]);
+
+        $group = Group::where('event_id', $event->id)->first();
+
+        $exists = GroupInvite::where('group_id', $group->id)
+                    ->where('receiver_id', $data['contact_id'])
+                    ->exists();
+
+        if ($exists) {
+            return response()->json(['message' => 'Already invited']);
+        }
+
+        $contact = Contact::where('id', $data['contact_id'])->first();
+
+        GroupInvite::create([
+            'group_id' => $group->id,
+            'receiver_id' => User::where('phone_number', $contact->phone_number)->first()->id,
+        ]);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function acceptInvite(Event $event, Request $request)
+    {
+        $userId = Auth::id();
+        $group = Group::where('event_id', $event->id)->first();
+        if (!$group) {
+            abort(404);
+        }
+        $invite = GroupInvite::where('group_id', $group->id)
+            ->where('receiver_id', $userId)
+            ->first();
+        if (!$invite) {
+            abort(404);
+        }
+        $invite->delete();
+        GroupMember::create([
+            'group_id' => $group->id,
+            'user_id' => $userId,
+        ]);
+        return response()->json(['success' => true]);
+    }
+
+    public function rejectInvite(Event $event, Request $request)
+    {
+        $userId = Auth::id();
+        $group = Group::where('event_id', $event->id)->first();
+        if (!$group) {
+            abort(404);
+        }
+        $invite = GroupInvite::where('group_id', $group->id)
+            ->where('receiver_id', $userId)
+            ->first();
+        if (!$invite) {
+            abort(404);
+        }
+        $invite->delete();
+        return response()->json(['success' => true]);
     }
 }

@@ -126,7 +126,7 @@
                             <div class="absolute inset-0 bg-black/40"></div>
                             <div class="relative bg-white rounded-lg shadow-lg w-full max-w-lg p-5">
                                 <h4 class="text-base font-semibold mb-2" x-text="noteId ? 'Edit Note' : 'Add Note'"></h4>
-                                <form @submit.prevent="saveNote()" class="space-y-3">
+                                <form @submit.prevent="saveNote()" class="space-y-3" data-validate="true">
                                     <textarea x-model="noteDraft" class="w-full p-3 border rounded text-sm text-gray-800" rows="6" placeholder="Write a note..."></textarea>
                                     <div class="flex items-center justify-end gap-2">
                                         <button type="button" @click="showNoteEditModal=false" class="text-sm px-3 py-1 border rounded">Cancel</button>
@@ -557,7 +557,6 @@
                     this.days = [...Array(last.getDate()).keys()].map(i => i + 1);
                 },
                 satFirst(d) {
-                    // JS getDay(): 0=Sun..6=Sat; convert to Saturday-first index where 0=Sat
                     return (d + 1) % 7;
                 },
                 prev() {
@@ -839,14 +838,14 @@
                 },
             }
         }
-        // Weekly Schedule (center area) — UI only, no backend yet
+        
         function weeklySchedule() {
             const pad = n => n < 10 ? '0' + n : n;
             const toISO = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
             const startOfWeekSat = (date) => {
                 const d = new Date(date);
-                const jsDow = d.getDay(); // 0=Sun..6=Sat
-                const offset = jsDow === 6 ? 0 : jsDow + 1; // Sat->0, Sun->1, ... Fri->6
+                const jsDow = d.getDay(); 
+                const offset = jsDow === 6 ? 0 : jsDow + 1; 
                 d.setDate(d.getDate() - offset);
                 d.setHours(0, 0, 0, 0);
                 return d;
@@ -856,7 +855,7 @@
             });
             const weekdayShort = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
             return {
-                anchor: new Date(), // any day in current week
+                anchor: new Date(), 
                 days: [],
                 weekLabel: '',
                 weekKey: 0,
@@ -883,45 +882,39 @@
                     description: '',
                     cycle: 'once',
                     duration: 60,
-                    // unified dynamic fields (used per cycle)
-                    once_date: '', // YYYY-MM-DD
-                    time: '', // HH:MM
-                    weekday: 6, // 0=Sun..6=Sat (default Saturday)
-                    day: 1, // day of month
-                    month: 1, // 1..12
-                    date_time: '' // computed before submit
+                    once_date: '', 
+                    time: '',
+                    weekday: 6, 
+                    day: 1, 
+                    month: 1, 
+                    date_time: ''
                 },
                 errors: {},
                 showConflictModal: false,
                 conflicts: [],
                 pendingPayload: null,
-                // --- helpers to normalize backend payloads into HH:MM ---
                 pad2(n) {
                     return (n < 10 ? '0' : '') + n;
                 },
                 hmFromDateString(dt) {
                     if (!dt) return '00:00';
                     const s = String(dt).trim();
-                    // try direct HH:MM first
                     let m = s.match(/\b(\d{1,2}):(\d{2})\b/);
                     if (m) {
                         const h = Math.min(23, Math.max(0, parseInt(m[1], 10)));
                         const mi = Math.min(59, Math.max(0, parseInt(m[2], 10)));
                         return this.pad2(h) + ":" + this.pad2(mi);
                     }
-                    // try Date parsing as a fallback
                     try {
                         const d = new Date(s);
                         if (!isNaN(d)) return this.pad2(d.getHours()) + ":" + this.pad2(d.getMinutes());
                     } catch (_) {
-                        /* ignore */
                     }
                     return '00:00';
                 },
                 normalizeEvent(e) {
                     const DAY = 1440;
                     const clamp = (n) => Math.max(0, Math.min(DAY, n));
-                    // 1) explicit minutes since midnight
                     if (e.start_minutes != null || e.start_min != null) {
                         const sm = parseInt(e.start_minutes ?? e.start_min, 10) || 0;
                         const dur = parseInt(e.duration ?? e.duration_minutes ?? e.duration_mins ?? 60, 10) || 60;
@@ -938,7 +931,6 @@
                             cycle: (e.cycle || 'once'),
                         };
                     }
-                    // 2) explicit start/end strings
                     if (e.start || e.starts_at || e.start_time) {
                         const startHM = this.hmFromDateString(e.start || e.starts_at || e.start_time);
                         const [sh, sm] = startHM.split(':').map(v => parseInt(v, 10));
@@ -965,7 +957,6 @@
                             cycle: (e.cycle || 'once'),
                         };
                     }
-                    // 3) date_time + duration
                     const startHM3 = this.hmFromDateString(e.date_time || e.startsAt || e.startsAtLocal || e.datetime);
                     const [sh3, sm3] = startHM3.split(':').map(v => parseInt(v, 10));
                     const startMin3 = clamp((sh3 * 60 + sm3) || 0);
@@ -993,7 +984,6 @@
                     }
                     return `${m} min`;
                 },
-                // --- Conflict modal helpers (robust HH:MM formatting) ---
                 hmFromMinutes(mins) {
                     if (mins == null || isNaN(mins)) return null;
                     const m = Math.max(0, Math.floor(mins));
@@ -1002,7 +992,6 @@
                     return this.pad2(h) + ':' + this.pad2(r);
                 },
                 formatHM(val) {
-                    // Accept "HH:MM", minutes as number, or any parseable date string
                     if (val == null) return null;
                     if (typeof val === 'number') return this.hmFromMinutes(val);
                     const s = String(val).trim();
@@ -1017,7 +1006,6 @@
                     return null;
                 },
                 normalizeConflictSide(side) {
-                    // side might be {start,end} as "HH:MM", or minutes, or with *_min / *_minutes keys.
                     if (!side) return {
                         start: null,
                         end: null
@@ -1050,7 +1038,6 @@
                     };
                 },
                 clampDay(y, m, d) {
-                    // m: 1..12, returns valid day in that month
                     const last = new Date(y, m, 0).getDate();
                     return Math.min(d, last);
                 },
@@ -1063,7 +1050,6 @@
                     let dt = new Date(now);
 
                     if (cycle === 'once') {
-                        // expect opts.once_date (YYYY-MM-DD) + time
                         const [Y, Mo, Da] = (opts.once_date || '').split('-').map(x => parseInt(x, 10));
                         if (!Y || !Mo || !Da) return null;
                         dt = new Date(Y, Mo - 1, Da, h, m, 0, 0);
@@ -1079,7 +1065,6 @@
                     }
 
                     if (cycle === 'weekly') {
-                        // opts.weekday: JS 0..6 (Sun..Sat)
                         const target = typeof opts.weekday === 'number' ? opts.weekday : 0;
                         dt.setHours(h, m, 0, 0);
                         const cur = dt.getDay();
@@ -1090,9 +1075,8 @@
                     }
 
                     if (cycle === 'monthly') {
-                        // opts.day 1..31, clamp to month length
                         const Y = dt.getFullYear();
-                        const Mo = dt.getMonth() + 1; // 1..12
+                        const Mo = dt.getMonth() + 1;
                         let D = this.clampDay(Y, Mo, parseInt(opts.day || 1, 10));
                         let candidate = new Date(Y, Mo - 1, D, h, m, 0, 0);
                         if (candidate < now) {
@@ -1105,7 +1089,6 @@
                     }
 
                     if (cycle === 'yearly') {
-                        // opts.month 1..12, opts.day 1..31
                         const Y = dt.getFullYear();
                         const Mo = parseInt(opts.month || 1, 10);
                         const D = this.clampDay(Y, Mo, parseInt(opts.day || 1, 10));
@@ -1140,12 +1123,10 @@
                     }
                 },
                 openEventView(dayIso, ev) {
-                    // Build a pretty date label from the clicked day (keeps context of the week cell you clicked)
                     const [yy, mm, dd] = dayIso.split('-').map(x => parseInt(x, 10));
                     const d = new Date(yy, (mm - 1), dd);
                     const dateLabel = `${d.getDate()} ${d.toLocaleString('en-US',{month:'short'})} ${d.getFullYear()}`;
 
-                    // Show modal immediately with a lightweight skeleton
                     this.showEventViewModal = true;
                     this.eventView = {
                         id: ev.id,
@@ -1157,7 +1138,6 @@
                         dateLabel
                     };
 
-                    // Helper to HH:MM from various fields
                     const hhmm = (val, fallbackHM = '00:00') => {
                         if (!val) return fallbackHM;
                         const s = String(val).trim();
@@ -1183,7 +1163,6 @@
                             return res.json();
                         })
                         .then(data => {
-                            // Derive start/end and durationHuman from the freshest data
                             let startHM = hhmm(data.start || data.starts_at || data.start_time || data.date_time, this.eventView.start);
                             const hasEnd = (data.end || data.ends_at || data.end_time);
                             let endHM = hasEnd ? hhmm(data.end || data.ends_at || data.end_time, this.eventView.end) : null;
@@ -1214,7 +1193,6 @@
                         })
                         .catch(err => {
                             console.error(err);
-                            // keep the modal open with whatever we had from UI
                         });
                 },
                 eventBoxStyle(ev) {
@@ -1250,7 +1228,7 @@
                     const end = new Date(start);
                     end.setDate(start.getDate() + 6);
                     this.weekLabel = `${monthShort(start)} ${start.getDate()} – ${monthShort(end)} ${end.getDate()}, ${end.getFullYear()}`;
-                    this.weekKey = `${toISO(start)}:${this.version}`; // forces full re-render of the rows
+                    this.weekKey = `${toISO(start)}:${this.version}`;
                     await this.fetchWeek();
                     await this.$nextTick();
                     this.initTooltips();
@@ -1271,7 +1249,6 @@
                     await this.build();
                     this.busy = false;
                 },
-                // Convert "HH:MM" or minutes to minutes since midnight
                 hmToMin(s) {
                     if (s == null) return null;
                     if (typeof s === 'number') return s;
@@ -1285,8 +1262,8 @@
                 },
                 weekStartISO() {
                     const d = new Date(this.anchor);
-                    const jsDow = d.getDay(); // 0..6
-                    const offset = (jsDow === 6) ? 0 : jsDow + 1; // هفته از شنبه
+                    const jsDow = d.getDay(); 
+                    const offset = (jsDow === 6) ? 0 : jsDow + 1; 
                     d.setDate(d.getDate() - offset);
                     d.setHours(0, 0, 0, 0);
                     const p = n => n < 10 ? '0' + n : n;
@@ -1296,10 +1273,9 @@
                     const events = (evts || []).filter(Boolean).map(e => ({
                         ...e
                     }));
-                    // مرتب‌سازی: اول شروع، بعد پایان
                     events.sort((a, b) => (a.startMin ?? 0) - (b.startMin ?? 0) || (a.endMin ?? 0) - (b.endMin ?? 0));
 
-                    let active = []; // رویدادهای در حال هم‌پوشانی [{ev,lane}]
+                    let active = []; 
                     const firstFreeLane = (used) => {
                         let i = 0;
                         while (used.has(i)) i++;
@@ -1312,10 +1288,8 @@
                         ev.startMin = start;
                         ev.endMin = end;
 
-                        // رویدادهایی که قبل از شروع این یکی تموم شدن رو حذف کن
                         active = active.filter(a => a.ev.endMin > start);
 
-                        // لِین آزاد پیدا کن
                         const used = new Set(active.map(a => a.lane));
                         const lane = firstFreeLane(used);
                         active.push({
@@ -1324,20 +1298,18 @@
                         });
                         ev._lane = lane;
 
-                        // تعداد هم‌پوشانی فعلی
                         const conc = active.length;
                         for (const a of active) {
                             a.ev._lanes = Math.max(a.ev._lanes || 1, conc);
                         }
                     }
 
-                    // تبدیل به درصد برای چیدن عمودی (stack)
                     for (const ev of events) {
                         const lanes = Math.max(1, ev._lanes || 1);
                         const lane = Math.max(0, ev._lane || 0);
                         const slot = 100 / lanes;
-                        ev.topPct = lane * slot; // فاصله از بالا
-                        ev.heightPct = Math.max(8, slot - 2); // ارتفاع هر کارت (کمی فاصله بین استک‌ها)
+                        ev.topPct = lane * slot;
+                        ev.heightPct = Math.max(8, slot - 2);
                         delete ev._lanes;
                         delete ev._lane;
                     }
@@ -1392,7 +1364,6 @@
                 },
                 openEventEdit(dayIso, ev) {
                     this.errors = {};
-                    // optimistic: open modal with a lightweight placeholder while loading
                     this.showEventModal = true;
                     this.eventForm = {
                         id: ev.id,
@@ -1410,7 +1381,6 @@
                         if (!isNaN(d)) {
                             return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
                         }
-                        // if server sends only HH:MM or unparsable date, fall back to selected day + given time
                         const m = String(dStr).match(/(\d{1,2}):(\d{2})/);
                         if (m) {
                             const hh = p(Math.min(23, Math.max(0, parseInt(m[1], 10))));
@@ -1431,7 +1401,6 @@
                             return res.json();
                         })
                         .then(data => {
-                            // duration in minutes — prefer explicit value; otherwise derive if start/end provided
                             let duration = 60;
                             if (data.duration != null) {
                                 duration = parseInt(data.duration, 10) || 60;
@@ -1450,10 +1419,8 @@
                         })
                         .catch(err => {
                             console.error(err);
-                            // keep modal open with the lightweight placeholder so the user can still edit if needed
                         });
                 },
-                // ---- Conflict helpers (robust against different shapes) ----
                 minToHM(mins) {
                     if (mins == null) return null;
                     const m = Math.max(0, parseInt(mins, 10) || 0);
@@ -1485,26 +1452,19 @@
                     const t = c.title || c.name || (c.event && (c.event.title || c.event.name));
                     return t || 'Event';
                 },
-                                formatConflictSide(side, which = 'start') {
-                    // side می‌تونه خام بیاد یا داخل پراپرتی‌های مختلف. اینجا نُرمالایز می‌کنیم:
+                formatConflictSide(side, which = 'start') {
                     const n = this.normalizeConflictSide(side);
                     const val = which === 'end' ? n.end : n.start;
                     return val || '— —';
                 },
-                // normalize conflicts input (array/object) before showing modal
                 openConflictModal(conflicts, payload) {
-                    // Accept either an array or an object with {conflicts|items|list}
                     const raw =
                         Array.isArray(conflicts)
                             ? conflicts
                             : (conflicts && (conflicts.conflicts || conflicts.items || conflicts.list)) || [];
-
-                    // Normalize each conflict so UI helpers (formatConflictTitle/formatConflictSide)
-                    // can render consistently.
                     this.conflicts = raw
                         .filter(Boolean)
                         .map(c => {
-                            // Try to pick a reasonable title
                             const title =
                                 c?.title ||
                                 c?.name ||
@@ -1512,13 +1472,10 @@
                                 c?.event?.name ||
                                 'Event';
 
-                            // Build a normalized "side" object from many possible shapes.
                             const normSide = (side, fallback = {}) => {
-                                // side may already be {start,end} as HH:MM or minutes
                                 if (side && (side.start != null || side.end != null || side.startMin != null || side.endMin != null || side.start_minutes != null || side.end_minutes != null)) {
                                     return side;
                                 }
-                                // Otherwise, attempt to construct from scattered keys on the parent conflict
                                 return {
                                     start:
                                         side?.start ??
@@ -1603,7 +1560,6 @@
                 async saveEvent() {
                     this.errors = {};
                     try {
-                        // 1) محاسبه اولین وقوع ≥ الان بر اساس cycle و فیلدهای فرم
                         const occ = this.nextOccurrence(this.eventForm.cycle, this.eventForm);
                         if (!occ) {
                             throw new Error('Invalid date/time for event');
@@ -1620,7 +1576,6 @@
                             date_time: computedDateTime
                         };
 
-                        // 2) چک تداخل قبل از ذخیره
                         const checkBody = {
                             ...basePayload
                         };
@@ -1640,12 +1595,10 @@
                         const checkData = await checkRes.json();
 
                         if ((checkData.count || (checkData.conflicts || []).length) > 0) {
-                            // نمایش مدال هشدار؛ با Continue anyway دوباره با force: true ذخیره می‌کنیم
                             this.openConflictModal(checkData.conflicts || [], basePayload);
                             return;
                         }
 
-                        // 3) بدون تداخل: ذخیره عادی
                         const url = isEdit ? `/events/${this.eventForm.id}` : '/events';
                         const method = isEdit ? 'PUT' : 'POST';
                         const res = await fetch(url, {
@@ -1696,24 +1649,17 @@
         }
     </script>
     <style>
-        /* Weekly schedule event styling to match monthly calendar blue */
         .event-block {
             height: calc(100% - 0.5rem);
             background-color: rgba(79, 70, 229, 0.30);
-            /* indigo-600 @ 30% */
             border: 1px solid #4f46e5;
-            /* indigo-600 */
             color: #111827;
-            /* slate-900 for readable text */
             border-radius: 0.5rem;
-            /* 8px */
         }
 
-        /* Slight emphasis on hover */
         .event-block:hover {
             background-color: rgba(79, 70, 229, 0.40);
             border-color: #4338ca;
-            /* indigo-700 */
         }
     </style>
 </x-app-layout>

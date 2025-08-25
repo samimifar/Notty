@@ -48,6 +48,15 @@ class User extends Authenticatable
         return $this->hasMany(Event::class);
     }
 
+    public function tasks()
+    {
+        return $this->hasMany(Task::class);
+    }
+    public function notes()
+    {
+        return $this->hasMany(Note::class);
+    }
+
     public function groupEvents()
     {
         return $this->hasManyThrough(Event::class, Group::class, 'id', 'group_id', null, 'event_id');
@@ -56,5 +65,9 @@ class User extends Authenticatable
     public function receivedInvites()
     {
         return $this->hasMany(GroupInvite::class, 'receiver_id');
+    }
+    public function getRoleLabelAttribute()
+    {
+        return $this->role ?? 'user';
     }
 }

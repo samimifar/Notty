@@ -16,7 +16,7 @@
         font-family: Shabnam, sans-serif !important;
     }
 </style>
-    <title>{{ config('app.name', 'Laravel') }}</title>
+    <title>Notty</title>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
